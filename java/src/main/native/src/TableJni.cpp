@@ -37,6 +37,8 @@
 #include <cudf/sorting.hpp>
 #include <cudf/stream_compaction.hpp>
 #include <rmm/cuda_stream_view.hpp>
+#include <cudf/utilities/traits.hpp>
+#include <cudf/scalar/scalar_factories.hpp>
 
 #include "cudf_jni_apis.hpp"
 #include "dtype_utils.hpp"
@@ -731,6 +733,31 @@ jlongArray combine_join_results(JNIEnv *env, cudf::table &left_results,
   std::vector<std::unique_ptr<cudf::column>> left_cols = left_results.release();
   std::vector<std::unique_ptr<cudf::column>> right_cols = right_results.release();
   return combine_join_results(env, std::move(left_cols), std::move(right_cols));
+}
+
+struct scalar_construction_helper {
+  template <typename T,
+           typename ScalarType = cudf::scalar_type_t<T>,
+           typename std::enable_if_t<!(std::is_integral<T>() && !cudf::is_boolean<T>())>* = nullptr>
+  std::unique_ptr<cudf::scalar> operator()(int value, bool validify = true) {
+    CUDF_FAIL("only support non-bool integral type");
+  }
+
+  template <typename T,
+            typename ScalarType = cudf::scalar_type_t<T>,
+            typename std::enable_if_t<std::is_integral<T>() && !cudf::is_boolean<T>()>* = nullptr>
+  std::unique_ptr<cudf::scalar> operator()(int value, bool validify = true) {
+    using Type = device_storage_type_t<T>;
+    auto s     = new ScalarType(Type{}, validify);
+    s->set_value(static_cast<T> (value));
+    return std::unique_ptr<scalar>(s);
+  }
+};
+
+std::unique_ptr<cudf::scalar> make_range_window_scalar(data_type type,
+                                      int value,
+                                      bool validity = true) {
+  return cudf::type_dispatcher(type, scalar_construction_helper{}, value, validity);
 }
 
 } // namespace
@@ -2242,31 +2269,35 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rollingWindowAggregate(
   CATCH_STD(env, NULL);
 }
 
-JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_timeRangeRollingWindowAggregate(
+JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggregate(
     JNIEnv *env, jclass, jlong j_input_table, jintArray j_keys,
-    jintArray j_timestamp_column_indices, jbooleanArray j_is_timestamp_ascending,
+    jintArray j_orderby_column_indices, jbooleanArray j_is_orderby_ascending,
     jintArray j_aggregate_column_indices, jlongArray j_agg_instances, jintArray j_min_periods,
-    jintArray j_preceding, jintArray j_following, 
-    jbooleanArray j_unbounded_preceding, jbooleanArray j_unbounded_following, 
+    jintArray j_preceding, jintArray j_following,
+    jbooleanArray j_unbounded_preceding, jbooleanArray j_unbounded_following,
     jboolean ignore_null_keys) {
 
   JNI_NULL_CHECK(env, j_input_table, "input table is null", NULL);
   JNI_NULL_CHECK(env, j_keys, "input keys are null", NULL);
-  JNI_NULL_CHECK(env, j_timestamp_column_indices, "input timestamp_column_indices are null", NULL);
-  JNI_NULL_CHECK(env, j_is_timestamp_ascending, "input timestamp_ascending is null", NULL);
+  JNI_NULL_CHECK(env, j_orderby_column_indices, "input orderby_column_indices are null", NULL);
+  JNI_NULL_CHECK(env, j_is_orderby_ascending, "input orderby_ascending is null", NULL);
   JNI_NULL_CHECK(env, j_aggregate_column_indices, "input aggregate_column_indices are null", NULL);
   JNI_NULL_CHECK(env, j_agg_instances, "agg_instances are null", NULL);
+
+  // TODO, need to check scale,
+  // But for now, range window has not support decimal, so just skip checking.
 
   try {
     cudf::jni::auto_set_device(env);
 
     using cudf::jni::valid_window_parameters;
+    using cudf::jni::make_range_window_scalar;
 
     // Convert from j-types to native.
     cudf::table_view *input_table{reinterpret_cast<cudf::table_view *>(j_input_table)};
     cudf::jni::native_jintArray keys{env, j_keys};
-    cudf::jni::native_jintArray timestamps{env, j_timestamp_column_indices};
-    cudf::jni::native_jbooleanArray timestamp_ascending{env, j_is_timestamp_ascending};
+    cudf::jni::native_jintArray orderbys{env, j_orderby_column_indices};
+    cudf::jni::native_jbooleanArray orderbys_ascending{env, j_is_orderby_ascending};
     cudf::jni::native_jintArray values{env, j_aggregate_column_indices};
     cudf::jni::native_jpointerArray<cudf::aggregation> agg_instances(env, j_agg_instances);
     cudf::jni::native_jintArray min_periods{env, j_min_periods};
@@ -2288,20 +2319,45 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_timeRangeRollingWindowAgg
     std::vector<std::unique_ptr<cudf::column>> result_columns;
     for (int i(0); i < values.size(); ++i) {
       int agg_column_index = values[i];
-      result_columns.emplace_back(
-        std::move(
-          cudf::grouped_time_range_rolling_window(
-            groupby_keys, 
-            input_table->column(timestamps[i]),
-            timestamp_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
-            input_table->column(agg_column_index), 
-            unbounded_preceding[i] ? cudf::window_bounds::unbounded() : cudf::window_bounds::get(preceding[i]), 
-            unbounded_following[i] ? cudf::window_bounds::unbounded() : cudf::window_bounds::get(following[i]), 
-            min_periods[i],
-            agg_instances[i]->clone()
+      cudf::column_view const &order_by_column = input_table->column(orderbys[i]);
+      cudf::data_type order_by_type = order_by_column.type();
+
+      if (cudf::is_timestamp(order_by_type)) {
+        // This one should be deleted in future
+        result_columns.emplace_back(
+          std::move(
+            cudf::grouped_time_range_rolling_window(
+              groupby_keys,
+              order_by_column,
+              orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
+              input_table->column(agg_column_index),
+              unbounded_preceding[i] ? cudf::window_bounds::unbounded() : cudf::window_bounds::get(preceding[i]),
+              unbounded_following[i] ? cudf::window_bounds::unbounded() : cudf::window_bounds::get(following[i]),
+              min_periods[i],
+              agg_instances[i]->clone()
+            )
           )
-        )
-      );
+        );
+      } else {
+        result_columns.emplace_back(
+          std::move(
+            cudf::grouped_range_rolling_window(
+                groupby_keys,
+                order_by_column,
+                orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
+                input_table->column(agg_column_index),
+                unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
+                cudf::range_window_bounds::get(
+                    *make_range_window_scalar(order_by_column.type(), preceding[i], true).release()),
+                unbounded_following[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
+                cudf::range_window_bounds::get(
+                    *make_range_window_scalar(order_by_column.type(), following[i], true).release()),
+                min_periods[i],
+                agg_instances[i]->clone()
+            )
+          )
+        );
+      }
     }
 
     auto result_table = std::make_unique<cudf::table>(std::move(result_columns));
