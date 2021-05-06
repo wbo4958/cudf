@@ -2374,43 +2374,40 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
       int agg_column_index = values[i];
       cudf::column_view const &order_by_column = input_table->column(orderbys[i]);
       cudf::data_type order_by_type = order_by_column.type();
+      cudf::data_type unbounded_type = order_by_type;
 
       if (cudf::is_timestamp(order_by_type)) {
-        using ScalarType = cudf::scalar_type_t<cudf::size_type>;
-        result_columns.emplace_back(
-          std::move(
-            cudf::grouped_time_range_rolling_window(
+        if (!unbounded_preceding[i] || !unbounded_following[i]) {
+          if (order_by_type.id() == cudf::type_id::TIMESTAMP_DAYS) {
+            unbounded_type = cudf::data_type{cudf::type_id::DURATION_DAYS};
+          } else if (order_by_type.id() == cudf::type_id::TIMESTAMP_SECONDS) {
+            unbounded_type =cudf::data_type{cudf::type_id::DURATION_SECONDS};
+          } else if (order_by_type.id() == cudf::type_id::TIMESTAMP_MILLISECONDS) {
+            unbounded_type = cudf::data_type{cudf::type_id::DURATION_MILLISECONDS};
+          } else if (order_by_type.id() == cudf::type_id::TIMESTAMP_MICROSECONDS) {
+            unbounded_type = cudf::data_type{cudf::type_id::DURATION_MICROSECONDS};
+          } else if (order_by_type.id() == cudf::type_id::TIMESTAMP_NANOSECONDS) {
+            unbounded_type = cudf::data_type{cudf::type_id::DURATION_NANOSECONDS};
+          }
+        }
+      }
+
+      result_columns.emplace_back(
+        std::move(
+          cudf::grouped_range_rolling_window(
               groupby_keys,
               order_by_column,
               orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
               input_table->column(agg_column_index),
-              unbounded_preceding[i] ? cudf::window_bounds::unbounded() :
-                cudf::window_bounds::get(static_cast<cudf::size_type>((reinterpret_cast<ScalarType *>(preceding[i]))->value())),
-              unbounded_following[i] ? cudf::window_bounds::unbounded() :
-                cudf::window_bounds::get(static_cast<cudf::size_type>((reinterpret_cast<ScalarType *>(following[i]))->value())),
+              unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(unbounded_type) :
+              cudf::range_window_bounds::get(*preceding[i]),
+              unbounded_following[i] ? cudf::range_window_bounds::unbounded(unbounded_type) :
+              cudf::range_window_bounds::get(*following[i]),
               min_periods[i],
               agg_instances[i]->clone()
-            )
           )
-        );
-      } else {
-        result_columns.emplace_back(
-          std::move(
-            cudf::grouped_range_rolling_window(
-                groupby_keys,
-                order_by_column,
-                orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
-                input_table->column(agg_column_index),
-                unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-                cudf::range_window_bounds::get(*preceding[i]),
-                unbounded_following[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-                cudf::range_window_bounds::get(*following[i]),
-                min_periods[i],
-                agg_instances[i]->clone()
-            )
-          )
-        );
-      }
+        )
+      );
     }
 
     auto result_table = std::make_unique<cudf::table>(std::move(result_columns));
