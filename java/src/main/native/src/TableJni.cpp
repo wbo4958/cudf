@@ -2377,7 +2377,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
       cudf::data_type unbounded_type = order_by_type;
 
       if (cudf::is_timestamp(order_by_type)) {
-        if (!unbounded_preceding[i] || !unbounded_following[i]) {
+        if (unbounded_preceding[i] || unbounded_following[i]) {
           if (order_by_type.id() == cudf::type_id::TIMESTAMP_DAYS) {
             unbounded_type = cudf::data_type{cudf::type_id::DURATION_DAYS};
           } else if (order_by_type.id() == cudf::type_id::TIMESTAMP_SECONDS) {

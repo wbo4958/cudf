@@ -149,8 +149,8 @@ public class WindowOptions {
     private int minPeriods = 1;
     private int preceding = 0;
     private int following = 1;
-    private Scalar precedingScalar;
-    private Scalar followingScalar;
+    private Scalar precedingScalar = null;
+    private Scalar followingScalar = null;
     boolean staticSet = false;
     private ColumnVector precedingCol = null;
     private ColumnVector followingCol = null;
