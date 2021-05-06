@@ -3713,6 +3713,10 @@ public class TableTest extends CudfTestBase {
         .column( null, null, null, (short)2, (short)3, (short)5, null, null, (short)1, (short)2, (short)4, (short)5, (short)7) // orderBy Key
         .column( null, null, null, (byte)2, (byte)3, (byte)5, null, null, (byte)1, (byte)2, (byte)4, (byte)5, (byte)7) // orderBy Key
         .timestampDayColumn( null, null, null, 2, 3, 5, null, null, 1, 2, 4, 5, 7) // Timestamp orderBy Key
+        .timestampSecondsColumn( null, null, null, 2L, 3L, 5L, null, null, 1L, 2L, 4L, 5L, 7L)
+        .timestampMicrosecondsColumn( null, null, null, 2L, 3L, 5L, null, null, 1L, 2L, 4L, 5L, 7L)
+        .timestampMillisecondsColumn( null, null, null, 2L, 3L, 5L, null, null, 1L, 2L, 4L, 5L, 7L)
+        .timestampNanosecondsColumn( null, null, null, 2L, 3L, 5L, null, null, 1L, 2L, 4L, 5L, 7L)
         .build()) {
 
       for (int orderIndex = 3; orderIndex < unsorted.getNumberOfColumns(); orderIndex++) {
@@ -3797,6 +3801,10 @@ public class TableTest extends CudfTestBase {
         .column(null, null, null, (short)5, (short)3, (short)2,  null, null, (short)7, (short)5, (short)4, (short)2, (short)1) // orderby Key
         .column(null, null, null, (byte)5, (byte)3, (byte)2,  null, null, (byte)7, (byte)5, (byte)4, (byte)2, (byte)1) // orderby Key
         .timestampDayColumn(null, null, null, 5, 3, 2, null, null, 7, 5, 4, 2, 1) // Timestamp orderby Key
+        .timestampSecondsColumn( null, null, null, 5L, 3L, 2L,  null, null, 7L, 5L, 4L, 2L, 1L)
+        .timestampMicrosecondsColumn( null, null, null, 5L, 3L, 2L,  null, null, 7L, 5L, 4L, 2L, 1L)
+        .timestampMillisecondsColumn( null, null, null, 5L, 3L, 2L,  null, null, 7L, 5L, 4L, 2L, 1L)
+        .timestampNanosecondsColumn( null, null, null, 5L, 3L, 2L,  null, null, 7L, 5L, 4L, 2L, 1L)
         .build()) {
 
       for (int orderIndex = 3; orderIndex < unsorted.getNumberOfColumns(); orderIndex++) {
@@ -3887,66 +3895,76 @@ public class TableTest extends CudfTestBase {
         .column((short)2, (short)3, (short)5, null, null, null, (short)1, (short)2, (short)4, (short)5, (short)7, null, null) // order by Key
         .column((byte)2, (byte)3, (byte)5, null, null, null, (byte)1, (byte)2, (byte)4, (byte)5, (byte)7, null, null) // order by Key
         .timestampDayColumn( 2, 3, 5, null, null, null,  1, 2, 4, 5, 7, null, null) // Timestamp order by Key
+        .timestampSecondsColumn( 2L, 3L, 5L, null, null, null, 1L, 2L, 4L, 5L, 7L, null, null)
+        .timestampMicrosecondsColumn( 2L, 3L, 5L, null, null, null, 1L, 2L, 4L, 5L, 7L, null, null)
+        .timestampMillisecondsColumn( 2L, 3L, 5L, null, null, null, 1L, 2L, 4L, 5L, 7L, null, null)
+        .timestampNanosecondsColumn( 2L, 3L, 5L, null, null, null, 1L, 2L, 4L, 5L, 7L, null, null)
         .build()) {
-      int[] orderByIndices = {3, 4, 5, 6, 7};
-      for (int orderIndex : orderByIndices) {
+      for (int orderIndex = 3; orderIndex < unsorted.getNumberOfColumns(); orderIndex++) {
         try (Table sorted = unsorted.orderBy(OrderByArg.asc(0), OrderByArg.asc(1), OrderByArg.asc(orderIndex, false));
              ColumnVector expectSortedAggColumn = ColumnVector.fromBoxedInts(7, 5, 1, 9, 7, 9, 8, 2, 8, 0, 6, 6, 8)) {
           ColumnVector sortedAggColumn = sorted.getColumn(2);
           assertColumnsAreEqual(expectSortedAggColumn, sortedAggColumn);
-          WindowOptions unboundedPrecedingOneFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .following(1)
-              .orderByColumnIndex(orderIndex)
-              .build();
 
-          WindowOptions onePrecedingUnboundedFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .preceding(1)
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .build();
+          DType type = unsorted.getColumn(orderIndex).getType();
+          try (Scalar following1 = getScalar(type, 1L);
+               Scalar preceding1 = getScalar(type, 1L);
+               Scalar following0 = getScalar(type, 0L);
+               Scalar preceding0 = getScalar(type, 0L);) {
+            WindowOptions unboundedPrecedingOneFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .following(following1)
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-          WindowOptions unboundedPrecedingAndFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .build();
+            WindowOptions onePrecedingUnboundedFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .preceding(preceding1)
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-          WindowOptions unboundedPrecedingAndCurrentRow = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .following(0)
-              .orderByColumnIndex(orderIndex)
-              .build();
+            WindowOptions unboundedPrecedingAndFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-          WindowOptions currentRowAndUnboundedFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .preceding(0)
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .build();
+            WindowOptions unboundedPrecedingAndCurrentRow = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .following(following0)
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-          try (Table windowAggResults = sorted.groupBy(0, 1)
-              .aggregateWindowsOverRanges(
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingOneFollowing),
-                  Aggregation.count().onColumn(2).overWindow(onePrecedingUnboundedFollowing),
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndFollowing),
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndCurrentRow),
-                  Aggregation.count().onColumn(2).overWindow(currentRowAndUnboundedFollowing));
-               ColumnVector expect_0 = ColumnVector.fromBoxedInts(2, 2, 3, 6, 6, 6, 2, 2, 4, 4, 5, 7, 7);
-               ColumnVector expect_1 = ColumnVector.fromBoxedInts(6, 6, 4, 3, 3, 3, 7, 7, 5, 5, 3, 2, 2);
-               ColumnVector expect_2 = ColumnVector.fromBoxedInts(6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7);
-               ColumnVector expect_3 = ColumnVector.fromBoxedInts(1, 2, 3, 6, 6, 6, 1, 2, 3, 4, 5, 7, 7);
-               ColumnVector expect_4 = ColumnVector.fromBoxedInts(6, 5, 4, 3, 3, 3, 7, 6, 5, 4, 3, 2, 2)) {
+            WindowOptions currentRowAndUnboundedFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .preceding(preceding0)
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-            assertColumnsAreEqual(expect_0, windowAggResults.getColumn(0));
-            assertColumnsAreEqual(expect_1, windowAggResults.getColumn(1));
-            assertColumnsAreEqual(expect_2, windowAggResults.getColumn(2));
-            assertColumnsAreEqual(expect_3, windowAggResults.getColumn(3));
-            assertColumnsAreEqual(expect_4, windowAggResults.getColumn(4));
+            try (Table windowAggResults = sorted.groupBy(0, 1)
+                .aggregateWindowsOverRanges(
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingOneFollowing),
+                    Aggregation.count().onColumn(2).overWindow(onePrecedingUnboundedFollowing),
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndFollowing),
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndCurrentRow),
+                    Aggregation.count().onColumn(2).overWindow(currentRowAndUnboundedFollowing));
+                 ColumnVector expect_0 = ColumnVector.fromBoxedInts(2, 2, 3, 6, 6, 6, 2, 2, 4, 4, 5, 7, 7);
+                 ColumnVector expect_1 = ColumnVector.fromBoxedInts(6, 6, 4, 3, 3, 3, 7, 7, 5, 5, 3, 2, 2);
+                 ColumnVector expect_2 = ColumnVector.fromBoxedInts(6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7);
+                 ColumnVector expect_3 = ColumnVector.fromBoxedInts(1, 2, 3, 6, 6, 6, 1, 2, 3, 4, 5, 7, 7);
+                 ColumnVector expect_4 = ColumnVector.fromBoxedInts(6, 5, 4, 3, 3, 3, 7, 6, 5, 4, 3, 2, 2)) {
+
+              assertColumnsAreEqual(expect_0, windowAggResults.getColumn(0));
+              assertColumnsAreEqual(expect_1, windowAggResults.getColumn(1));
+              assertColumnsAreEqual(expect_2, windowAggResults.getColumn(2));
+              assertColumnsAreEqual(expect_3, windowAggResults.getColumn(3));
+              assertColumnsAreEqual(expect_4, windowAggResults.getColumn(4));
+            }
           }
         }
       }
@@ -3965,72 +3983,81 @@ public class TableTest extends CudfTestBase {
         .column((short)5, (short)3, (short)2, null, null, null, (short)7, (short)5, (short)4, (short)2, (short)1, null, null) // Timestamp Key
         .column((byte)5, (byte)3, (byte)2, null, null, null, (byte)7, (byte)5, (byte)4, (byte)2, (byte)1, null, null) // Timestamp Key
         .timestampDayColumn( 5, 3, 2, X, X, X,  7, 5, 4, 2, 1, X, X) // Timestamp Key
+        .timestampSecondsColumn( 5L, 3L, 2L, null, null, null, 7L, 5L, 4L, 2L, 1L, null, null)
+        .timestampMicrosecondsColumn( 5L, 3L, 2L, null, null, null, 7L, 5L, 4L, 2L, 1L, null, null)
+        .timestampMillisecondsColumn( 5L, 3L, 2L, null, null, null, 7L, 5L, 4L, 2L, 1L, null, null)
+        .timestampNanosecondsColumn( 5L, 3L, 2L, null, null, null, 7L, 5L, 4L, 2L, 1L, null, null)
         .build()) {
-      int[] orderByIndices = {3, 4, 5, 6, 7};
-      for (int orderIndex : orderByIndices) {
+      for (int orderIndex = 3; orderIndex < unsorted.getNumberOfColumns(); orderIndex++) {
         try (Table sorted = unsorted.orderBy(OrderByArg.asc(0), OrderByArg.asc(1), OrderByArg.desc(orderIndex, true));
              ColumnVector expectSortedAggColumn = ColumnVector.fromBoxedInts(7, 5, 1, 9, 7, 9, 8, 2, 8, 0, 6, 6, 8)) {
           ColumnVector sortedAggColumn = sorted.getColumn(2);
           assertColumnsAreEqual(expectSortedAggColumn, sortedAggColumn);
 
-          WindowOptions unboundedPrecedingOneFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .following(1)
-              .orderByColumnIndex(orderIndex)
-              .orderByDescending()
-              .build();
+          DType type = unsorted.getColumn(orderIndex).getType();
+          try (Scalar following1 = getScalar(type, 1L);
+               Scalar preceding1 = getScalar(type, 1L);
+               Scalar following0 = getScalar(type, 0L);
+               Scalar preceding0 = getScalar(type, 0L);) {
+            WindowOptions unboundedPrecedingOneFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .following(following1)
+                .orderByColumnIndex(orderIndex)
+                .orderByDescending()
+                .build();
 
-          WindowOptions onePrecedingUnboundedFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .preceding(1)
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .orderByDescending()
-              .build();
+            WindowOptions onePrecedingUnboundedFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .preceding(preceding1)
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .orderByDescending()
+                .build();
 
-          WindowOptions unboundedPrecedingAndFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .orderByDescending()
-              .build();
+            WindowOptions unboundedPrecedingAndFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .orderByDescending()
+                .build();
 
-          WindowOptions unboundedPrecedingAndCurrentRow = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .following(0)
-              .orderByColumnIndex(orderIndex)
-              .orderByDescending()
-              .build();
+            WindowOptions unboundedPrecedingAndCurrentRow = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .following(following0)
+                .orderByColumnIndex(orderIndex)
+                .orderByDescending()
+                .build();
 
-          WindowOptions currentRowAndUnboundedFollowing = WindowOptions.builder()
-              .minPeriods(1)
-              .preceding(0)
-              .unboundedFollowing()
-              .orderByColumnIndex(orderIndex)
-              .orderByDescending()
-              .build();
+            WindowOptions currentRowAndUnboundedFollowing = WindowOptions.builder()
+                .minPeriods(1)
+                .preceding(preceding0)
+                .unboundedFollowing()
+                .orderByColumnIndex(orderIndex)
+                .orderByDescending()
+                .build();
 
-          try (Table windowAggResults = sorted.groupBy(0, 1)
-              .aggregateWindowsOverRanges(
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingOneFollowing),
-                  Aggregation.count().onColumn(2).overWindow(onePrecedingUnboundedFollowing),
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndFollowing),
-                  Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndCurrentRow),
-                  Aggregation.count().onColumn(2).overWindow(currentRowAndUnboundedFollowing));
-               ColumnVector expect_0 = ColumnVector.fromBoxedInts(1, 3, 3, 6, 6, 6, 1, 3, 3, 5, 5, 7, 7);
-               ColumnVector expect_1 = ColumnVector.fromBoxedInts(6, 5, 5, 3, 3, 3, 7, 6, 6, 4, 4, 2, 2);
-               ColumnVector expect_2 = ColumnVector.fromBoxedInts(6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7);
-               ColumnVector expect_3 = ColumnVector.fromBoxedInts(1, 2, 3, 6, 6, 6, 1, 2, 3, 4, 5, 7, 7);
-               ColumnVector expect_4 = ColumnVector.fromBoxedInts(6, 5, 4, 3, 3, 3, 7, 6, 5, 4, 3, 2, 2)) {
+            try (Table windowAggResults = sorted.groupBy(0, 1)
+                .aggregateWindowsOverRanges(
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingOneFollowing),
+                    Aggregation.count().onColumn(2).overWindow(onePrecedingUnboundedFollowing),
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndFollowing),
+                    Aggregation.count().onColumn(2).overWindow(unboundedPrecedingAndCurrentRow),
+                    Aggregation.count().onColumn(2).overWindow(currentRowAndUnboundedFollowing));
+                 ColumnVector expect_0 = ColumnVector.fromBoxedInts(1, 3, 3, 6, 6, 6, 1, 3, 3, 5, 5, 7, 7);
+                 ColumnVector expect_1 = ColumnVector.fromBoxedInts(6, 5, 5, 3, 3, 3, 7, 6, 6, 4, 4, 2, 2);
+                 ColumnVector expect_2 = ColumnVector.fromBoxedInts(6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7);
+                 ColumnVector expect_3 = ColumnVector.fromBoxedInts(1, 2, 3, 6, 6, 6, 1, 2, 3, 4, 5, 7, 7);
+                 ColumnVector expect_4 = ColumnVector.fromBoxedInts(6, 5, 4, 3, 3, 3, 7, 6, 5, 4, 3, 2, 2)) {
 
-            assertColumnsAreEqual(expect_0, windowAggResults.getColumn(0));
-            assertColumnsAreEqual(expect_1, windowAggResults.getColumn(1));
-            assertColumnsAreEqual(expect_2, windowAggResults.getColumn(2));
-            assertColumnsAreEqual(expect_3, windowAggResults.getColumn(3));
-            assertColumnsAreEqual(expect_4, windowAggResults.getColumn(4));
+              assertColumnsAreEqual(expect_0, windowAggResults.getColumn(0));
+              assertColumnsAreEqual(expect_1, windowAggResults.getColumn(1));
+              assertColumnsAreEqual(expect_2, windowAggResults.getColumn(2));
+              assertColumnsAreEqual(expect_3, windowAggResults.getColumn(3));
+              assertColumnsAreEqual(expect_4, windowAggResults.getColumn(4));
+            }
           }
         }
       }
