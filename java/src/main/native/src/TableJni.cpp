@@ -730,6 +730,16 @@ bool valid_window_parameters(native_jintArray const &values,
          values.size() == preceding.size() && values.size() == following.size();
 }
 
+// Check that window parameters are valid.
+bool valid_window_parameters(native_jintArray const &values,
+                             native_jpointerArray<cudf::aggregation> const &ops,
+                             native_jintArray const &min_periods,
+                             native_jpointerArray<cudf::scalar> const &preceding,
+                             native_jpointerArray<cudf::scalar> const &following) {
+  return values.size() == ops.size() && values.size() == min_periods.size() &&
+         values.size() == preceding.size() && values.size() == following.size();
+}
+
 // Generate gather maps needed to manifest the result of a join between two tables.
 // The resulting Java long array contains the following at each index:
 //   0: Size of each gather map in bytes
@@ -2318,9 +2328,8 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
     JNIEnv *env, jclass, jlong j_input_table, jintArray j_keys,
     jintArray j_orderby_column_indices, jbooleanArray j_is_orderby_ascending,
     jintArray j_aggregate_column_indices, jlongArray j_agg_instances, jintArray j_min_periods,
-    jintArray j_preceding, jintArray j_following,
+    jlongArray j_preceding, jlongArray j_following,
     jbooleanArray j_unbounded_preceding, jbooleanArray j_unbounded_following,
-    jlongArray j_preceding_scalars, jlongArray j_following_scalars,
     jboolean ignore_null_keys) {
 
   JNI_NULL_CHECK(env, j_input_table, "input table is null", NULL);
@@ -2329,8 +2338,8 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
   JNI_NULL_CHECK(env, j_is_orderby_ascending, "input orderby_ascending is null", NULL);
   JNI_NULL_CHECK(env, j_aggregate_column_indices, "input aggregate_column_indices are null", NULL);
   JNI_NULL_CHECK(env, j_agg_instances, "agg_instances are null", NULL);
-  JNI_NULL_CHECK(env, j_preceding_scalars, "preceding_scalars are null", NULL);
-  JNI_NULL_CHECK(env, j_following_scalars, "following_scalars are null", NULL);
+  JNI_NULL_CHECK(env, j_preceding, "preceding are null", NULL);
+  JNI_NULL_CHECK(env, j_following, "following are null", NULL);
 
   try {
     cudf::jni::auto_set_device(env);
@@ -2345,14 +2354,11 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
     cudf::jni::native_jintArray values{env, j_aggregate_column_indices};
     cudf::jni::native_jpointerArray<cudf::aggregation> agg_instances(env, j_agg_instances);
     cudf::jni::native_jintArray min_periods{env, j_min_periods};
-    cudf::jni::native_jintArray preceding{env, j_preceding};
-    cudf::jni::native_jintArray following{env, j_following};
     cudf::jni::native_jbooleanArray unbounded_preceding{env, j_unbounded_preceding};
     cudf::jni::native_jbooleanArray unbounded_following{env, j_unbounded_following};
-    cudf::jni::native_jpointerArray<cudf::scalar> agg_precedings(env, j_preceding_scalars);
-    cudf::jni::native_jpointerArray<cudf::scalar> agg_followings(env, j_following_scalars);
+    cudf::jni::native_jpointerArray<cudf::scalar> preceding(env, j_preceding);
+    cudf::jni::native_jpointerArray<cudf::scalar> following(env, j_following);
 
-    // TODO add agg_precedings and agg_followings
     if (not valid_window_parameters(values, agg_instances, min_periods, preceding, following)) {
       JNI_THROW_NEW(env, "java/lang/IllegalArgumentException",
                     "Number of aggregation columns must match number of agg ops, and window-specs",
@@ -2377,9 +2383,9 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
               orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
               input_table->column(agg_column_index),
               unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-              cudf::range_window_bounds::get(*agg_precedings[i]),
+              cudf::range_window_bounds::get(*preceding[i]),
               unbounded_following[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-              cudf::range_window_bounds::get(*agg_followings[i]),
+              cudf::range_window_bounds::get(*following[i]),
               min_periods[i],
               agg_instances[i]->clone()
           )
