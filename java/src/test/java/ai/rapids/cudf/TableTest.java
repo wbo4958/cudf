@@ -3670,25 +3670,32 @@ public class TableTest extends CudfTestBase {
         .column(1, 1, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7) // orderBy Key
         .column((byte) 1, (byte)1, (byte)2, (byte)3, (byte)3, (byte)3, (byte)4, (byte)4, (byte)5, (byte)5, (byte)6, (byte)6, (byte)7) // orderBy Key
         .timestampDayColumn(1, 1, 2, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7) // Timestamp orderBy Key
+        .timestampSecondsColumn(1L, 1L, 2L, 3L, 3L, 3L, 4L, 4L, 5L, 5L, 6L, 6L, 7L)
+//        .timestampMicrosecondsColumn(1L, 1L, 2L, 3L, 3L, 3L, 4L, 4L, 5L, 5L, 6L, 6L, 7L)
+//        .timestampMillisecondsColumn(1L, 1L, 2L, 3L, 3L, 3L, 4L, 4L, 5L, 5L, 6L, 6L, 7L)
+//        .timestampNanosecondsColumn(1L, 1L, 2L, 3L, 3L, 3L, 4L, 4L, 5L, 5L, 6L, 6L, 7L)
         .build()) {
-      int[] orderByIndices = {3, 4, 5, 6, 7};
-      for (int orderIndex : orderByIndices) {
+
+      for (int orderIndex = 3; orderIndex < unsorted.getNumberOfColumns(); orderIndex++) {
         try (Table sorted = unsorted.orderBy(OrderByArg.asc(0), OrderByArg.asc(1), OrderByArg.asc(orderIndex));
              ColumnVector expectSortedAggColumn = ColumnVector.fromBoxedInts(7, 5, 1, 9, 7, 9, 8, 2, 8, 0, 6, 6, 8)) {
           ColumnVector sortedAggColumn = sorted.getColumn(2);
           assertColumnsAreEqual(expectSortedAggColumn, sortedAggColumn);
 
-          WindowOptions window = WindowOptions.builder()
-              .minPeriods(1)
-              .unboundedPreceding()
-              .following(1)
-              .orderByColumnIndex(orderIndex)
-              .build();
+          DType type = unsorted.getColumn(orderIndex).getType();
+          try (Scalar following = getScalar(type, 1L)) {
+            WindowOptions window = WindowOptions.builder()
+                .minPeriods(1)
+                .unboundedPreceding()
+                .following(following)
+                .orderByColumnIndex(orderIndex)
+                .build();
 
-          try (Table windowAggResults = sorted.groupBy(0, 1)
-              .aggregateWindowsOverRanges(WindowAggregate.count(2, window));
-               ColumnVector expect = ColumnVector.fromBoxedInts(3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5)) {
-            assertColumnsAreEqual(expect, windowAggResults.getColumn(0));
+            try (Table windowAggResults = sorted.groupBy(0, 1)
+                .aggregateWindowsOverRanges(WindowAggregate.count(2, window));
+                 ColumnVector expect = ColumnVector.fromBoxedInts(3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5)) {
+              assertColumnsAreEqual(expect, windowAggResults.getColumn(0));
+            }
           }
         }
       }

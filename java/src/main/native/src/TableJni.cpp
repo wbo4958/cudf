@@ -2375,22 +2375,42 @@ JNIEXPORT jlongArray JNICALL Java_ai_rapids_cudf_Table_rangeRollingWindowAggrega
       cudf::column_view const &order_by_column = input_table->column(orderbys[i]);
       cudf::data_type order_by_type = order_by_column.type();
 
-      result_columns.emplace_back(
-        std::move(
-          cudf::grouped_range_rolling_window(
+      if (cudf::is_timestamp(order_by_type)) {
+        using ScalarType = cudf::scalar_type_t<cudf::size_type>;
+        result_columns.emplace_back(
+          std::move(
+            cudf::grouped_time_range_rolling_window(
               groupby_keys,
               order_by_column,
               orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
               input_table->column(agg_column_index),
-              unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-              cudf::range_window_bounds::get(*preceding[i]),
-              unbounded_following[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
-              cudf::range_window_bounds::get(*following[i]),
+              unbounded_preceding[i] ? cudf::window_bounds::unbounded() :
+                cudf::window_bounds::get(static_cast<cudf::size_type>((reinterpret_cast<ScalarType *>(preceding[i]))->value())),
+              unbounded_following[i] ? cudf::window_bounds::unbounded() :
+                cudf::window_bounds::get(static_cast<cudf::size_type>((reinterpret_cast<ScalarType *>(following[i]))->value())),
               min_periods[i],
               agg_instances[i]->clone()
+            )
           )
-        )
-      );
+        );
+      } else {
+        result_columns.emplace_back(
+          std::move(
+            cudf::grouped_range_rolling_window(
+                groupby_keys,
+                order_by_column,
+                orderbys_ascending[i] ? cudf::order::ASCENDING : cudf::order::DESCENDING,
+                input_table->column(agg_column_index),
+                unbounded_preceding[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
+                cudf::range_window_bounds::get(*preceding[i]),
+                unbounded_following[i] ? cudf::range_window_bounds::unbounded(order_by_type) :
+                cudf::range_window_bounds::get(*following[i]),
+                min_periods[i],
+                agg_instances[i]->clone()
+            )
+          )
+        );
+      }
     }
 
     auto result_table = std::make_unique<cudf::table>(std::move(result_columns));
