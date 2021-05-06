@@ -25,9 +25,11 @@ public class WindowOptions {
 
   enum FrameType {ROWS, RANGE}
 
-  private final int preceding;
   private final int minPeriods;
+  private final int preceding;
   private final int following;
+  private final Scalar precedingScalar;
+  private final Scalar followingScalar;
   private final ColumnVector precedingCol;
   private final ColumnVector followingCol;
   private final int orderByColumnIndex;
@@ -38,9 +40,11 @@ public class WindowOptions {
 
 
   private WindowOptions(Builder builder) {
-    this.preceding = builder.preceding;
     this.minPeriods = builder.minPeriods;
+    this.preceding = builder.preceding;
     this.following = builder.following;
+    this.precedingScalar = builder.precedingScalar;
+    this.followingScalar = builder.followingScalar;
     this.precedingCol = builder.precedingCol;
     this.followingCol = builder.followingCol;
     this.orderByColumnIndex = builder.orderByColumnIndex;
@@ -69,6 +73,12 @@ public class WindowOptions {
       }
       if (followingCol != null) {
         ret = ret && followingCol.equals(o.followingCol);
+      }
+      if (precedingScalar != null) {
+        ret = ret && precedingScalar.equals(o.precedingScalar);
+      }
+      if (followingScalar != null) {
+        ret = ret && followingScalar.equals(o.followingScalar);
       }
       return ret;
     }
@@ -105,6 +115,10 @@ public class WindowOptions {
 
   int getFollowing() { return this.following; }
 
+  Scalar getPrecedingScalar() { return this.precedingScalar; }
+
+  Scalar getFollowingScalar() { return this.followingScalar; }
+
   ColumnVector getPrecedingCol() { return precedingCol; }
 
   ColumnVector getFollowingCol() { return this.followingCol; }
@@ -129,6 +143,8 @@ public class WindowOptions {
     private int minPeriods = 1;
     private int preceding = 0;
     private int following = 1;
+    private Scalar precedingScalar;
+    private Scalar followingScalar;
     boolean staticSet = false;
     private ColumnVector precedingCol = null;
     private ColumnVector followingCol = null;
@@ -161,6 +177,21 @@ public class WindowOptions {
       assert (followingCol != null && followingCol.getNullCount() == 0);
       this.precedingCol = precedingCol;
       this.followingCol = followingCol;
+      return this;
+    }
+
+    /**
+     * Set the size of the window, one entry per row. This does not take ownership of the
+     * columns passed in so you have to be sure that the life time of the column outlives
+     * this operation.
+     * @param precedingScalar the number of rows preceding the current row.
+     * @param followingScalar the number of rows following the current row.
+     */
+    public Builder window(Scalar precedingScalar, Scalar followingScalar) {
+      assert (precedingScalar != null && precedingScalar.isValid());
+      assert (followingScalar != null && followingScalar.isValid());
+      this.precedingScalar = precedingScalar;
+      this.followingScalar = followingScalar;
       return this;
     }
 
@@ -220,6 +251,16 @@ public class WindowOptions {
 
     public Builder following(int following) {
       this.following = following;
+      return this;
+    }
+
+    public Builder preceding(Scalar preceding) {
+      this.precedingScalar = preceding;
+      return this;
+    }
+
+    public Builder following(Scalar following) {
+      this.followingScalar = following;
       return this;
     }
 
